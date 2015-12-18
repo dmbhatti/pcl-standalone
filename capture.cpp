@@ -2,6 +2,11 @@
 #include <pcl/common/time.h>
 #include "capture.h"
 
+//#include <iostream>
+//#include <pcl/io/pcd_io.h>
+#include <pcl/point_types.h>
+//#include <stdio.h>
+
 Capture::Capture (pcl::Grabber * grabber) : grabber_ (grabber)
 {
     instanceID = InstanceID::getUniqueID();
@@ -17,9 +22,16 @@ Capture::~Capture (){
 
 void Capture::cloudCallback (const PointCloudT::ConstPtr &input)
 {
+    /*static int counter=0;
+
+    pcl::PCDWriter w;
+    char buf[4096];
+    sprintf(buf, "frame_%06d.pcd", counter++);
+    w.writeBinaryCompressed(buf, *input);*/
+
     static double last = pcl::getTime ();
     double now = pcl::getTime ();
-    std::cout << "capture dT: " << now-last << std::endl;
+    //std::cout << "[Capture] dt: " << now-last << std::endl;
 
     const CloudMessage::Ptr message(new CloudMessage);
     message->emitterName = "Camera";
@@ -33,8 +45,6 @@ void Capture::cloudCallback (const PointCloudT::ConstPtr &input)
     cloud->pointCloud = input;
     cloud->cloudColor.setColor(255,0,0);
     message->clouds.push_back(cloud);
-
-
 
     emit newCloudMessage(message);
 }

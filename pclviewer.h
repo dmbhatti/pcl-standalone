@@ -54,6 +54,7 @@ private:
     QTreeWidgetItem* treeFindChildItem(const QTreeWidget* tree, const QTreeWidgetItem* parent, QString childName);
 
     void treeUpdateInfo(QTreeWidgetItem* infoItem, const QVector<QString> &infos);
+    void treeUpdateObjects(QTreeWidgetItem* objectsItem, const QVector<Object::Ptr> &objects);
 
     Ui::PCLViewer *ui;
     Capture* captureDevice;

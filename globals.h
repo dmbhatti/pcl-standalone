@@ -26,8 +26,9 @@ public:
 
 class Object {
 public:
-    QVector<int> indices;
+    pcl::PointIndicesConstPtr indices;
     QString objectName;
+    PointColorRGB objectColor;
     QVector<QString> objectInfo;
 
     typedef boost::shared_ptr<Object > Ptr;
@@ -40,7 +41,7 @@ public:
     QString cloudName;
     PointColorRGB cloudColor;
     QVector<QString> cloudInfo;
-    QVector<Object::ConstPtr> objects;
+    QVector<Object::Ptr> objects;
 
     typedef boost::shared_ptr<Cloud > Ptr;
     typedef boost::shared_ptr<const Cloud > ConstPtr;

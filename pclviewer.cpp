@@ -1,4 +1,5 @@
 #include <pcl/visualization/common/common.h>
+#include <pcl/filters/extract_indices.h>
 #include "pclviewer.h"
 #include "../build/ui_pclviewer.h"
 #include "cloudemitterreceiver.h"
@@ -43,10 +44,11 @@ void PCLViewer::displayClouds(const CloudMessage::ConstPtr &message) {
 
     for(int i=0; i<message->clouds.size(); i++) {
 
-        Cloud::Ptr cloud = message->clouds.at(i);
+        Cloud::Ptr cloud = message->clouds[i];
 
         // Unique name for cloud
         const std::string cloudName = QString::number(message->emitterID).toStdString() +
+                QString::number(i).toStdString() +
                 cloud->cloudName.toStdString();
 
         // Dirty but simplifies choosing colors for clouds in the processing part of this tool...
@@ -58,6 +60,32 @@ void PCLViewer::displayClouds(const CloudMessage::ConstPtr &message) {
 
         // Show cloud in tree widget (as a child of the emitter)
         treeShowCloud(cloud, message->emitterID);
+
+        // Add or update objects contained in pointcloud (if any)
+        if(!cloud->objects.empty()) {
+
+            PointCloudT::Ptr objectCloud(new PointCloudT);
+            pcl::ExtractIndices<PointT> extractor(true);
+            extractor.setInputCloud(cloud->pointCloud);
+
+            for (int j=0; j<cloud->objects.size(); j++) {
+
+                extractor.setIndices(cloud->objects[j]->indices);
+                extractor.filter(*objectCloud);
+
+                const std::string objectName = cloudName +
+                        cloud->objects[j]->objectName.toStdString();
+
+                cloud->objects[j]->objectColor.setInputCloud(objectCloud);
+
+                // Add or update object in PCL viewer
+                if (viewer->updatePointCloud(objectCloud, cloud->objects[j]->objectColor, objectName) == false)
+                    viewer->addPointCloud(objectCloud, cloud->objects[j]->objectColor, objectName);
+
+                // Show object in tree widget (as a child of the cloud)
+                treeShowCloud(cloud, message->emitterID);
+            }
+        }
     }
 
     // Update PCL viewer and qvtkWidget
@@ -108,10 +136,21 @@ void PCLViewer::treeShowCloud(const Cloud::ConstPtr &cloud, const int emitterID)
         if(cloudItem==NULL) {
             cloudItem = new QTreeWidgetItem(cloudsRootItem);
             cloudItem->setText(0, cloud->cloudName);
+            cloudItem->addChild(new QTreeWidgetItem()); // Info
+            cloudItem->addChild(new QTreeWidgetItem()); // Objects
+            cloudItem->child(0)->setText(0, "Information");
+            cloudItem->child(1)->setText(0, "Objects");
         }
 
+        // Get cloud information node
+        QTreeWidgetItem* infoItem = cloudItem->child(0);
         // Update cloud information items
-        treeUpdateInfo(cloudItem, cloud->cloudInfo);
+        treeUpdateInfo(infoItem, cloud->cloudInfo);
+
+        // Get cloud information node
+        QTreeWidgetItem* objectsItem = cloudItem->child(1);
+        // Update cloud object items
+        treeUpdateObjects(objectsItem, cloud->objects);
     }
 }
 
@@ -161,6 +200,25 @@ void PCLViewer::treeUpdateInfo(QTreeWidgetItem* infoItem, const QVector<QString>
     for(int j=0; j<infos.size(); j++) {
         QString text = infos.at(j);
         QTreeWidgetItem *subItem = infoItem->child(i);
+        subItem->setText(0,text);
+        i++;
+    }
+}
+
+void PCLViewer::treeUpdateObjects(QTreeWidgetItem* objectsItem, const QVector<Object::Ptr> &objects) {
+    // Add or remove childs if necessary
+    while(objectsItem->childCount() != objects.size()) {
+        if (objectsItem->childCount() < objects.size())
+            objectsItem->addChild(new QTreeWidgetItem());
+        else
+            objectsItem->removeChild(objectsItem->child(0));
+    }
+
+    // Update cloud information items
+    int i = 0;
+    for(int j=0; j<objects.size(); j++) {
+        QString text = objects[j]->objectName;
+        QTreeWidgetItem *subItem = objectsItem->child(i);
         subItem->setText(0,text);
         i++;
     }
