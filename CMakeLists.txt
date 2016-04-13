@@ -1,40 +1,45 @@
-cmake_minimum_required (VERSION 2.8)
+cmake_minimum_required(VERSION 2.8)
+project(pcl-standalone)
 
-project      (pcl-standalone)
-find_package (Qt4 REQUIRED)
-find_package (VTK REQUIRED)
-find_package (PCL 1.7.1 REQUIRED)
-find_package (OpenCV REQUIRED core imgproc highgui)
-find_package (Eigen3 REQUIRED)
+set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR})
+find_package(Qt4 REQUIRED)
+find_package(VTK REQUIRED)
+find_package(PCL 1.7.1 REQUIRED)
+find_package(OpenCV REQUIRED core imgproc highgui)
+find_package(Eigen3 REQUIRED)
 
-set(OpenCV_DIR "/usr/lib/opencv")
+set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
-include_directories (${PCL_INCLUDE_DIRS} ${OpenCV_INCLUDE_DIRS} ${EIGEN3_INCLUDE_DIR})
-link_directories    (${PCL_LIBRARY_DIRS})
-add_definitions     (${PCL_DEFINITIONS})
+include_directories(${QT_INCLUDE_DIRS})
+include_directories(${VTK_INCLUDE_DIRS})
+include_directories(${PCL_INCLUDE_DIRS})
+include_directories(${OpenCV_INCLUDE_DIRS})
+include_directories(${EIGEN3_INCLUDE_DIR})
 
-file(GLOB headers "*.h*")
-file(GLOB sources "*.cpp")
-file(GLOB_RECURSE headers_algos "algos/*.h")
-file(GLOB_RECURSE sources_algos "algos/*.cpp")
-file(GLOB ui_FILES "*.ui")
+link_directories(${QT_LIBRARY_DIRS})
+link_directories(${VTK_LIBRARY_DIRS})
+link_directories(${PCL_LIBRARY_DIRS})
+link_directories(${OpenCV_LIBRARY_DIRS})
 
-list  (APPEND project_HEADERS ${headers} ${headers_algos})
-list  (APPEND project_SOURCES ${sources} ${sources_algos})
-set  (project_FORMS   ${ui_FILES})
-set  (VTK_LIBRARIES   vtkRendering vtkGraphics vtkHybrid QVTK)
-#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11") Cannot use C11 with PCL
+file(GLOB headers       "*.h*")
+file(GLOB sources       "*.cpp")
+file(GLOB headers_algos "algos/*.h")
+file(GLOB sources_algos "algos/*.cpp")
+file(GLOB headers_ade   "algos/ADEVision/*.h")
+file(GLOB sources_ade   "algos/ADEVision/*.cpp")
+file(GLOB ui_files      "*.ui")
 
+set(project_headers ${headers} ${headers_algos} ${headers_ade})
+set(project_sources ${sources} ${sources_algos} ${sources_ade})
+set(project_forms   ${ui_files})
+set(VTK_LIBRARIES   vtkRendering vtkGraphics vtkHybrid QVTK)
 
-QT4_WRAP_CPP (project_HEADERS_MOC   ${project_HEADERS})
-QT4_WRAP_UI  (project_FORMS_HEADERS ${project_FORMS})
+qt4_wrap_cpp(project_headers_moc    ${project_headers})
+qt4_wrap_ui(project_forms_headers   ${project_forms})
 
-INCLUDE         (${QT_USE_FILE})
-ADD_DEFINITIONS (${QT_DEFINITIONS})
+include(${QT_USE_FILE})
+add_definitions(${QT_DEFINITIONS})
 
-ADD_EXECUTABLE  (pcl-standalone ${project_SOURCES}
-                                ${project_FORMS_HEADERS}
-                                ${project_HEADERS_MOC})
-
-TARGET_LINK_LIBRARIES (pcl-standalone ${QT_LIBRARIES} ${PCL_LIBRARIES} ${VTK_LIBRARIES} ${OpenCV_LIBS})
+add_executable(pcl-standalone ${project_sources} ${project_forms_headers} ${project_headers_moc})
+target_link_libraries(pcl-standalone ${QT_LIBRARIES} ${PCL_LIBRARIES} ${VTK_LIBRARIES} ${OpenCV_LIBS})
 

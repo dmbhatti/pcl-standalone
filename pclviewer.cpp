@@ -2,7 +2,7 @@
 #include <pcl/filters/extract_indices.h>
 #include <pcl/io/pcd_io.h>
 #include "pclviewer.h"
-#include "../build/ui_pclviewer.h"
+#include "ui_pclviewer.h" //Will be generated when building...
 #include "cloudemitterreceiver.h"
 #include <QFileDialog>
 #include "algos/downsampler.h"
