@@ -44,6 +44,10 @@ protected:
 private slots:
     void on_startPushbutton_released();
 
+    void on_exportButton_released();
+
+    void on_useFile_toggled(bool checked);
+
 private:
     void displayClouds(const CloudMessage::ConstPtr &message);
     void treeShowMessageSource(const CloudMessage::ConstPtr &message);
@@ -57,7 +61,12 @@ private:
     void treeUpdateObjects(QTreeWidgetItem* objectsItem, const QVector<Object::Ptr> &objects);
 
     Ui::PCLViewer *ui;
+
+    pcl::Grabber* grabber;
     Capture* captureDevice;
+    QString fileName;
+
+    CloudMessage::ConstPtr previousMessage;
 };
 
 #endif // PCLVIEWER_H

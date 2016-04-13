@@ -10,17 +10,18 @@
 
 /*  Point type used in this tool.
  *  Changing the point type can be done here
- *  and will be used throughout this tool.
+ *  and will be used throughout this tool (not totally true: code copied from ADE expect PointXYZ...).
  *  PointXYZRGBA (heavier, more information)
  *  PointXYZ (lighter)
  */
-typedef pcl::PointXYZ PointT;
+typedef pcl::PointXYZRGBA PointT;
 typedef pcl::PointCloud<PointT> PointCloudT;
 
 class PointColorRGB: public pcl::visualization::PointCloudColorHandlerCustom<PointT> {
 public:
     PointColorRGB() : pcl::visualization::PointCloudColorHandlerCustom<PointT>(255, 255, 255) {}
-    void setColor(int r, int g, int b) { r_ = r; g_ = g; b_ = b; }
+    void setColor(int r, int g, int b) { r_ = r; r__ = r; g_ = g; g__ = g; b_ = b; b__ = b;}
+    int r__, g__, b__;
 };
 
 

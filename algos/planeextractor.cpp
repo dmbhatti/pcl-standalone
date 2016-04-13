@@ -19,12 +19,13 @@
 #include <pcl/features/normal_3d.h>
 #include <Eigen/Dense>
 
+#define MAX_THREADS 8
+#define USE_FAST_PLANE_SEGMENTATION
 
-#define MAX_THREADS 4
-
-PlaneExtractor::PlaneExtractor()
-{
+PlaneExtractor::PlaneExtractor() {
     instanceID = InstanceID::getUniqueID();
+    processingTime = 0;
+    lastSpawn =  pcl::getTime();
 
     // Init threads
     for(int i=0; i<MAX_THREADS; i++)
@@ -32,19 +33,27 @@ PlaneExtractor::PlaneExtractor()
 }
 
 void PlaneExtractor::receiveCloudMessage(const CloudMessage::ConstPtr &message) {
-
     for(int i=0; i<MAX_THREADS; i++) {
-        if(threads[i].isFinished()) {
+        if(threads[i].isFinished() && pcl::getTime() > (lastSpawn+(processingTime/MAX_THREADS))) {
             threads[i] = QtConcurrent::run(this, &PlaneExtractor::algorithm, message);
+            lastSpawn = pcl::getTime();
             return;
         }
     }
-    std::cout << "[PlaneExtractor] Message dropped." << std::endl;
+    //std::cout << "[PlaneExtractor] Message dropped." << std::endl;
 }
 
 void PlaneExtractor::algorithm(const CloudMessage::ConstPtr &message) {
-
     double tic = pcl::getTime ();
+
+    /* We need this here because the code imported from ADE does not support PointXYZRGBA */
+    pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_xyz(new pcl::PointCloud<pcl::PointXYZ>);
+    cloud_xyz->points.resize(message->clouds.at(0)->pointCloud->points.size());
+    for (size_t i = 0; i < message->clouds.at(0)->pointCloud->points.size(); i++) {
+        cloud_xyz->points[i].x = message->clouds.at(0)->pointCloud->points[i].x;
+        cloud_xyz->points[i].y = message->clouds.at(0)->pointCloud->points[i].y;
+        cloud_xyz->points[i].z = message->clouds.at(0)->pointCloud->points[i].z;
+    }
 
     // Camera position
     static const double ROTX = pcl::deg2rad(-30.0); //-30deg
@@ -62,20 +71,19 @@ void PlaneExtractor::algorithm(const CloudMessage::ConstPtr &message) {
                                       0, 0,           0,          1);
 
     ExtractedPlane::Ptr currentPlane(new ExtractedPlane());
-    currentPlane->setCloud(message->clouds.at(0)->pointCloud);
+    currentPlane->setCloud(cloud_xyz);
     currentPlane->setTransform(TRANSFORM);
     currentPlane->setFrameNumber(FRAMENUM);
 
-
-    if (!SegmentPlane<pcl::PointXYZ>(message->clouds.at(0)->pointCloud,
+#ifndef USE_FAST_PLANE_SEGMENTATION
+    if (!SegmentPlane<pcl::PointXYZ>(cloud_xyz,
                                      currentPlane->getPlaneIndices(),
                                      currentPlane->getObjectsIndices(),
                                      currentPlane->getPlaneCoefficients(), TRANSFORM)) {
         std::cout << "[PlaneExtractor] SegmentPlane did not find plane." << std::endl;
         return;
     }
-
-/*
+#else
     Eigen::Matrix3f rot;
     rot << 1, 0, 0,
             0,  cos(ROTX),  sin(ROTX),
@@ -91,12 +99,11 @@ void PlaneExtractor::algorithm(const CloudMessage::ConstPtr &message) {
                              currentPlane->getPlaneCoefficients())) {
         std::cout << "[PlaneExtractor] fastPlanSegmentation did not find plane." << std::endl;
         return;
-    }*/
-
-
+    }
+#endif
 
     boost::mutex::scoped_lock lock(mutexChull);
-    if (!filterPointsOnPlane<pcl::PointXYZ>(message->clouds.at(0)->pointCloud,
+    if (!filterPointsOnPlane<pcl::PointXYZ>(cloud_xyz,
                                             currentPlane->getPlaneIndices(),
                                             currentPlane->getObjectsIndices(),
                                             currentPlane->getPlaneCoefficients(),
@@ -105,6 +112,20 @@ void PlaneExtractor::algorithm(const CloudMessage::ConstPtr &message) {
         return;
     }
     lock.unlock();
+
+    // Creating the KdTree object for the search method of the extraction
+    pcl::search::KdTree<PointT>::Ptr tree (new pcl::search::KdTree<PointT>);
+    tree->setInputCloud(message->clouds.at(0)->pointCloud);
+
+    std::vector<pcl::PointIndices> clusters;
+    pcl::EuclideanClusterExtraction<PointT> ec;
+    ec.setClusterTolerance (0.02); // 2cm
+    ec.setMinClusterSize (100);
+    ec.setMaxClusterSize (25000);
+    ec.setSearchMethod (tree);
+    ec.setInputCloud (message->clouds.at(0)->pointCloud);
+    ec.setIndices(currentPlane->getFilteredObjectsIndices());
+    ec.extract (clusters);
 
     const CloudMessage::Ptr newMessage(new CloudMessage);
     newMessage->emitterName = "PlaneExtractor";
@@ -119,21 +140,28 @@ void PlaneExtractor::algorithm(const CloudMessage::ConstPtr &message) {
     plane->objectName = "Plane";
     plane->indices = currentPlane->getPlaneIndices();
     plane->objectColor.setColor(0,0,255);
-
-    const Object::Ptr objectsOnTable(new Object);
-    objectsOnTable->objectName = "Objects on table";
-    objectsOnTable->indices = currentPlane->getFilteredObjectsIndices();
-    objectsOnTable->objectColor.setColor(255,255,0);
-
     cloud->objects.push_back(plane);
-    cloud->objects.push_back(objectsOnTable);
+
+    for (int i=0; i<clusters.size(); i++) {
+        const Object::Ptr objectOnTable(new Object);
+        std::stringstream ss;
+        ss << "Object " << i;
+        std::string s = ss.str();
+        objectOnTable->objectName = QString(s.c_str());
+        pcl::PointIndices::Ptr obj (new pcl::PointIndices());
+        obj->indices = clusters[i].indices;
+        objectOnTable->indices = obj;
+        objectOnTable->objectColor.setColor(std::max(255-50*i,0),std::min(50*i,255),0);
+        cloud->objects.push_back(objectOnTable);
+    }
 
     newMessage->clouds.push_back(cloud);
 
     // Done working, send message
     emit newCloudMessage(newMessage);
 
-    std::cout << "[PlaneExtractor] dT: " << pcl::getTime()-tic << std::endl;
+    processingTime = pcl::getTime()-tic;
+    std::cout << "[PlaneExtractor] dT: " << processingTime << std::endl;
 }
 
 
@@ -149,13 +177,13 @@ bool PlaneExtractor::fastPlanSegmentation(const PointCloudT::ConstPtr inputCloud
     seg.setAxis(vertical);
     seg.setEpsAngle(pcl::deg2rad(20.0));
     seg.setMethodType (pcl::SAC_RANSAC);
-    seg.setDistanceThreshold (0.015);
+    seg.setDistanceThreshold (0.0125);
     seg.setMaxIterations(2000);
     seg.setInputCloud (inputCloud);
     seg.segment (*inliers, *coefficients);
 
     if(inliers->indices.size()>500) {
-        double planeHeight = 0;
+        /*double planeHeight = 0;
         int samples = 0;
         for(int i=0; i<inliers->indices.size(); i+=100) {
             planeHeight += Eigen::Vector3f(inputCloud->points[inliers->indices[0]].getArray3fMap()).dot(vertical);
@@ -163,61 +191,60 @@ bool PlaneExtractor::fastPlanSegmentation(const PointCloudT::ConstPtr inputCloud
         }
         planeHeight /= samples;
 
-        if(fabs(planeHeight+cam_height-table_height) < 0.1) {
+        if(fabs(planeHeight+cam_height-table_height) < 0.1) {*/
 
-            pcl::search::KdTree<PointT>::Ptr tree(new pcl::search::KdTree<PointT>);
-            pcl::IndicesPtr tmpPlaneIndices = pcl::IndicesPtr(new std::vector<int>(inliers->indices));
-            tree->setInputCloud(inputCloud, tmpPlaneIndices);
-            std::vector<pcl::PointIndices> clusters;
-            pcl::extractEuclideanClusters<PointT>(*inputCloud, *tmpPlaneIndices, tree, 0.03, clusters);
-            int largestClusterSize = 0;
-            int largestIndex = -1;
-            for (int i = 0; i < clusters.size(); ++i) {
-              if (clusters[i].indices.size() > largestClusterSize) {
+        pcl::search::KdTree<PointT>::Ptr tree(new pcl::search::KdTree<PointT>);
+        pcl::IndicesPtr tmpPlaneIndices = pcl::IndicesPtr(new std::vector<int>(inliers->indices));
+        tree->setInputCloud(inputCloud, tmpPlaneIndices);
+        std::vector<pcl::PointIndices> clusters;
+        pcl::extractEuclideanClusters<PointT>(*inputCloud, *tmpPlaneIndices, tree, 0.03, clusters);
+        int largestClusterSize = 0;
+        int largestIndex = -1;
+        for (int i = 0; i < clusters.size(); ++i) {
+            if (clusters[i].indices.size() > largestClusterSize) {
                 largestClusterSize = clusters[i].indices.size();
                 largestIndex = i;
-              }
             }
-            inliers->indices = clusters[largestIndex].indices;
-
-            //check normal (we want the normal facing towards the camera and there's no guarantee of it's direction)
-            Eigen::Vector3f plane_norm(coefficients->values[0], coefficients->values[1], coefficients->values[2]);
-            plane_norm.normalize();
-            float cos_ang = plane_norm.dot(vertical);
-            float ang_btwn = std::acos(cos_ang);
-            //printf("[SegmentPlane] plane norm: %f %f %f angle: %f\n", plane_norm[0], plane_norm[1], plane_norm[2], ang_btwn * (180.0 / M_PI));
-
-            //if norm is facing wrong way, flip it
-            if (ang_btwn > (M_PI - M_PI / 6.0)) {
-              //printf("[SegmentPlane] wrong normal direction...flipping.\n\n");
-              coefficients->values[0] = -coefficients->values[0];
-              coefficients->values[1] = -coefficients->values[1];
-              coefficients->values[2] = -coefficients->values[2];
-              coefficients->values[3] = -coefficients->values[3];
-            } else if (ang_btwn > M_PI / 6.0) {
-              PCL_ERROR("[SegmentPlane][ERROR] Wrong normal!\n");
-            }
-
-            std::vector<bool> used_indices(inputCloud->size(), false);
-            for (int i = 0; i < inliers->indices.size(); ++i) {
-                int index = inliers->indices[i];
-                used_indices.at(index) = true;
-            }
-
-            objects_indices->indices.reserve(inputCloud->size() - inliers->indices.size());
-            for (int i = 0; i < used_indices.size(); ++i) {
-                if (!used_indices[i]) {
-                    objects_indices->indices.push_back(i);
-                }
-            }
-
-            return true;
         }
-        else return false;
+        inliers->indices = clusters[largestIndex].indices;
+
+        //check normal (we want the normal facing towards the camera and there's no guarantee of it's direction)
+        Eigen::Vector3f plane_norm(coefficients->values[0], coefficients->values[1], coefficients->values[2]);
+        plane_norm.normalize();
+        float cos_ang = plane_norm.dot(vertical);
+        float ang_btwn = std::acos(cos_ang);
+        //printf("[SegmentPlane] plane norm: %f %f %f angle: %f\n", plane_norm[0], plane_norm[1], plane_norm[2], ang_btwn * (180.0 / M_PI));
+
+        //if norm is facing wrong way, flip it
+        if (ang_btwn > (M_PI - M_PI / 6.0)) {
+            //printf("[SegmentPlane] wrong normal direction...flipping.\n\n");
+            coefficients->values[0] = -coefficients->values[0];
+            coefficients->values[1] = -coefficients->values[1];
+            coefficients->values[2] = -coefficients->values[2];
+            coefficients->values[3] = -coefficients->values[3];
+        } else if (ang_btwn > M_PI / 6.0) {
+            PCL_ERROR("[SegmentPlane][ERROR] Wrong normal!\n");
+        }
+
+        std::vector<bool> used_indices(inputCloud->size(), false);
+        for (int i = 0; i < inliers->indices.size(); ++i) {
+            int index = inliers->indices[i];
+            used_indices.at(index) = true;
+        }
+
+        objects_indices->indices.reserve(inputCloud->size() - inliers->indices.size());
+        for (int i = 0; i < used_indices.size(); ++i) {
+            if (!used_indices[i]) {
+                objects_indices->indices.push_back(i);
+            }
+        }
+
+        return true;
+        /*}
+        else return false;*/
 
     }
     else std::cerr << "[PlaneExtractor] Not enough points in plane! " << std::endl;
-
 
     return false;
 }

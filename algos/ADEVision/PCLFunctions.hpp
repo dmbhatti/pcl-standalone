@@ -619,8 +619,8 @@ bool filterPointsOnPlane(typename pcl::PointCloud<PointT>::ConstPtr cloud,
     PointT translated_point;
 
     // Total erosion distance: distance * iterations (here: 5cm)
-    static const float erosion_distance = 0.01;
-    static const int erosion_iterations = 5;
+    static const float erosion_distance = 0.0025;
+    static const int erosion_iterations = 40;
 
     for (int iter=0; iter<erosion_iterations; iter++) {
       eroded_hull->clear();

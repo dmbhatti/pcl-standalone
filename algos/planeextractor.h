@@ -26,6 +26,8 @@ private:
                               pcl::ModelCoefficients::Ptr coefficients);
 
     QVector<QFuture<void> > threads;
+    double processingTime;
+    double lastSpawn;
 };
 
 #endif // PLANEEXTRACTOR_H

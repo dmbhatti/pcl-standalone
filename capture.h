@@ -4,6 +4,7 @@
 #include "cloudemitterreceiver.h"
 #include <boost/shared_ptr.hpp>
 #include <pcl/io/openni_grabber.h>
+#include <pcl/io/pcd_io.h>
 #include "globals.h"
 
 
@@ -15,6 +16,7 @@ class Capture : public CloudEmitter
 public:
     /** Creates a new wrapper object from the specified grabber. */
     Capture (pcl::Grabber * grabber);
+    Capture (QString file);
     virtual ~Capture ();
 
     /** Starts the thread. */
@@ -32,6 +34,12 @@ public:
 private:
     /** The grabber data is received from. */
     pcl::Grabber * grabber_;
+
+    /** If Capture should simulate a camera using a file */
+    bool useFile;
+
+    /** Holds a pointcloud */
+    PointCloudT::Ptr cloudFromFile;
 
     int instanceID;
 };

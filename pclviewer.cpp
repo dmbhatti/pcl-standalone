@@ -1,23 +1,32 @@
 #include <pcl/visualization/common/common.h>
 #include <pcl/filters/extract_indices.h>
+#include <pcl/io/pcd_io.h>
 #include "pclviewer.h"
 #include "../build/ui_pclviewer.h"
 #include "cloudemitterreceiver.h"
+#include <QFileDialog>
+#include "algos/downsampler.h"
+#include "algos/planeextractor.h"
+
 
 PCLViewer::PCLViewer (QWidget *parent) :
     QMainWindow (parent),
     ui (new Ui::PCLViewer)
 {
-    ui->setupUi (this);
-    this->setWindowTitle ("PCL viewer");
+    ui->setupUi(this);
+    this->setWindowTitle("PCL viewer");
 
     // Set up the QVTK window
-    viewer.reset (new pcl::visualization::PCLVisualizer ("viewer", false));
+    viewer.reset (new pcl::visualization::PCLVisualizer("viewer", false));
     ui->qvtkWidget->SetRenderWindow (viewer->getRenderWindow ());
     viewer->setupInteractor (ui->qvtkWidget->GetInteractor (), ui->qvtkWidget->GetRenderWindow ());
+    viewer->setCameraPosition(-0.65, -0.08, -1.7, 0, -1, 0);
+    viewer->setCameraFieldOfView(3.1415/6);
+    viewer->setCameraClipDistances(1.32, 4.8);
     ui->qvtkWidget->update ();
 
     // Set the number of columns in the tree
+    ui->treeWidget->hide();
     ui->treeWidget->setColumnCount(2);
     ui->treeWidget->header()->hideSection(1); // Contains IDs
     ui->treeWidget->header()->hide();
@@ -38,12 +47,11 @@ void PCLViewer::setCaptureDevice(Capture* device) {
 void PCLViewer::receiveCloudMessage(const CloudMessage::ConstPtr &message) {
     treeShowMessageSource(message);
     displayClouds(message);
+    previousMessage = message;
 }
 
 void PCLViewer::displayClouds(const CloudMessage::ConstPtr &message) {
-
     for(int i=0; i<message->clouds.size(); i++) {
-
         Cloud::Ptr cloud = message->clouds[i];
 
         // Unique name for cloud
@@ -61,6 +69,12 @@ void PCLViewer::displayClouds(const CloudMessage::ConstPtr &message) {
         // Show cloud in tree widget (as a child of the emitter)
         treeShowCloud(cloud, message->emitterID);
 
+        // Remove old object clouds (might be unnecessary, but we have no way of knowing currently...
+        for(int j=0; j<100; j++) {
+            std::string objectName = cloudName + QString::number(j).toStdString();
+            viewer->removePointCloud(objectName);
+        }
+
         // Add or update objects contained in pointcloud (if any)
         if(!cloud->objects.empty()) {
 
@@ -69,12 +83,10 @@ void PCLViewer::displayClouds(const CloudMessage::ConstPtr &message) {
             extractor.setInputCloud(cloud->pointCloud);
 
             for (int j=0; j<cloud->objects.size(); j++) {
-
                 extractor.setIndices(cloud->objects[j]->indices);
                 extractor.filter(*objectCloud);
 
-                const std::string objectName = cloudName +
-                        cloud->objects[j]->objectName.toStdString();
+                std::string objectName = cloudName + QString::number(j).toStdString();
 
                 cloud->objects[j]->objectColor.setInputCloud(objectCloud);
 
@@ -92,11 +104,7 @@ void PCLViewer::displayClouds(const CloudMessage::ConstPtr &message) {
     ui->qvtkWidget->update ();
 }
 
-
-
-
 void PCLViewer::treeShowMessageSource(const CloudMessage::ConstPtr &message) {
-
     // Try to find emitter to update it
     QTreeWidgetItem* item = treeFindItem(ui->treeWidget, message->emitterID);
 
@@ -119,7 +127,6 @@ void PCLViewer::treeShowMessageSource(const CloudMessage::ConstPtr &message) {
 }
 
 void PCLViewer::treeShowCloud(const Cloud::ConstPtr &cloud, const int emitterID) {
-
     // Find "Clouds" root item in emitter item
     QTreeWidgetItem *cloudsRootItem = treeFindChildItem(ui->treeWidget,
                                                         treeFindItem(ui->treeWidget, emitterID),
@@ -136,6 +143,7 @@ void PCLViewer::treeShowCloud(const Cloud::ConstPtr &cloud, const int emitterID)
         if(cloudItem==NULL) {
             cloudItem = new QTreeWidgetItem(cloudsRootItem);
             cloudItem->setText(0, cloud->cloudName);
+            cloudItem->setBackgroundColor(0, QColor(cloud->cloudColor.r__, cloud->cloudColor.g__, cloud->cloudColor.b__));
             cloudItem->addChild(new QTreeWidgetItem()); // Info
             cloudItem->addChild(new QTreeWidgetItem()); // Objects
             cloudItem->child(0)->setText(0, "Information");
@@ -220,6 +228,7 @@ void PCLViewer::treeUpdateObjects(QTreeWidgetItem* objectsItem, const QVector<Ob
         QString text = objects[j]->objectName;
         QTreeWidgetItem *subItem = objectsItem->child(i);
         subItem->setText(0,text);
+        subItem->setBackgroundColor(0, QColor(objects[j]->objectColor.r__, objects[j]->objectColor.g__, objects[j]->objectColor.b__));
         i++;
     }
 }
@@ -231,6 +240,39 @@ PCLViewer::~PCLViewer ()
 
 void PCLViewer::on_startPushbutton_released()
 {
+    if(captureDevice == NULL) {
+        if(!ui->useFile->isChecked()) {
+            // Create a new grabber for OpenNI devices
+            grabber = new pcl::OpenNIGrabber();
+            // Create a Capture object running the grabber in a seperate thread
+            captureDevice = new Capture(grabber);
+        }
+        else {
+            // Create a Capture object simulating a camera using the file
+            captureDevice = new Capture(fileName);
+        }
+
+        /*--------------------------------*/
+        /* Setup and link algorithms here */
+        /*--------------------------------*/
+
+        // Downsample cloud
+        //Downsampler* downsampler = new Downsampler();
+        //downsampler->connectToCloud(camera);
+
+        // Extract plane
+        PlaneExtractor* planeExtractor = new PlaneExtractor();
+        planeExtractor->connectToCloud(captureDevice);
+
+        /*------------------------------------------------------*/
+        /* Link the output of the algorithms to the viewer here */
+        /*------------------------------------------------------*/
+
+        //w.connectToCloud(camera); // View source point cloud
+        //w.connectToCloud(downsampler); // View downsampled source cloud
+        connectToCloud(planeExtractor); // View extracted plane
+    }
+
     if(captureDevice!=NULL) {
         if(!captureDevice->isRunning()) {
             captureDevice->run();
@@ -243,4 +285,31 @@ void PCLViewer::on_startPushbutton_released()
     }
 }
 
+void PCLViewer::on_exportButton_released()
+{
+    // Very crappy. Need to think about a better way to get clouds in the viewer --> through the TreeView, once it's usable.
+    if(previousMessage!=NULL) {
+        for(int i=0; i<previousMessage->clouds.size(); i++) {
+            for(int j=0; j<previousMessage->clouds[i]->objects.size(); j++) {
+                if(previousMessage->clouds[i]->objects[j]->objectName == "Objects on table") {
+                    pcl::ExtractIndices<PointT> extractor(true);
+                    extractor.setInputCloud(previousMessage->clouds[i]->pointCloud);
+                    extractor.setIndices(previousMessage->clouds[i]->objects[j]->indices);
+                    PointCloudT::Ptr objectCloud(new PointCloudT);
+                    extractor.filter(*objectCloud);
+                    QString fileName = QFileDialog::getSaveFileName(this, tr("Save File"), "", tr("PCD file (*.pcd)"));
+                    pcl::PCDWriter w;
+                    w.writeBinaryCompressed(fileName.toStdString(), *objectCloud);
+                }
+            }
+        }
+    }
+}
 
+void PCLViewer::on_useFile_toggled(bool checked)
+{
+    if(checked) {
+        fileName = QFileDialog::getOpenFileName(this, tr("Open Pointcloud"), "", tr("PCD files (*.pcd)"));
+        ui->useFile->setDisabled(true);
+    }
+}

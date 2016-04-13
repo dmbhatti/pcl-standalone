@@ -11,13 +11,29 @@ Capture::Capture (pcl::Grabber * grabber) : grabber_ (grabber)
 {
     instanceID = InstanceID::getUniqueID();
 
+    useFile = false;
+
     // Allows sending CloudMessage::ConstPtr through signal/slots.
     qRegisterMetaType<CloudMessage::ConstPtr> ("CloudMessage::ConstPtr");
 }
 
+Capture::Capture (QString file) : cloudFromFile (new PointCloudT()) {
+    instanceID = InstanceID::getUniqueID();
+
+    useFile = true;
+
+    // Allows sending CloudMessage::ConstPtr through signal/slots.
+    qRegisterMetaType<CloudMessage::ConstPtr> ("CloudMessage::ConstPtr");
+
+    if (pcl::io::loadPCDFile<PointT> (file.toStdString(), *cloudFromFile) == -1) {
+        std::cerr << "Couldn't read file " << file.toStdString() << std::endl;
+        return;
+    }
+}
+
 Capture::~Capture (){
-    // stop the grabber
-    grabber_->stop ();
+    if(!useFile)
+        grabber_->stop ();
 }
 
 void Capture::cloudCallback (const PointCloudT::ConstPtr &input)
@@ -51,20 +67,37 @@ void Capture::cloudCallback (const PointCloudT::ConstPtr &input)
 
 void Capture::run ()
 {
-    if (!grabber_->isRunning()) {
-        std::cout << "[CAPTURE] Starting new grabber thread..." << std::endl;
+    if(!useFile) {
+        if (!grabber_->isRunning()) {
+            std::cout << "[CAPTURE] Starting new grabber thread..." << std::endl;
 
-        // make callback function from member function
-        boost::function<void (const PointCloudT::ConstPtr&)> f =
-                boost::bind (&Capture::cloudCallback, this, _1);
+            // make callback function from member function
+            boost::function<void (const PointCloudT::ConstPtr&)> f =
+                    boost::bind (&Capture::cloudCallback, this, _1);
 
-        // connect callback function for desired signal. In this case its a point cloud with color values
-        boost::signals2::connection c = grabber_->registerCallback (f);
+            // connect callback function for desired signal. In this case its a point cloud with color values
+            boost::signals2::connection c = grabber_->registerCallback (f);
 
-        // start receiving point clouds
-        grabber_->start ();
+            // start receiving point clouds
+            grabber_->start ();
+        }
+        else std::cerr << "[CAPTURE] Grabber already running!" << std::endl;
     }
-    else std::cerr << "[CAPTURE] Grabber already running!" << std::endl;
+    else {
+        const CloudMessage::Ptr message(new CloudMessage);
+        message->emitterName = "Camera";
+        message->emitterID = instanceID;
+        message->emitterInfo.push_back("FPS: " + 0);
+        message->emitterInfo.push_back("Points: " + QString::number(cloudFromFile->points.size()));
+
+        const Cloud::Ptr cloud(new Cloud);
+        cloud->cloudName = "Source";
+        cloud->pointCloud = cloudFromFile;
+        cloud->cloudColor.setColor(255,0,0);
+        message->clouds.push_back(cloud);
+
+        emit newCloudMessage(message);
+    }
 }
 
 void Capture::stop() {
@@ -75,5 +108,8 @@ void Capture::stop() {
 }
 
 bool Capture::isRunning() {
-   return grabber_->isRunning();
+   if(useFile)
+       return false;
+   else
+    return grabber_->isRunning();
 }
