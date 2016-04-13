@@ -13,12 +13,14 @@ include_directories (${PCL_INCLUDE_DIRS} ${OpenCV_INCLUDE_DIRS} ${EIGEN3_INCLUDE
 link_directories    (${PCL_LIBRARY_DIRS})
 add_definitions     (${PCL_DEFINITIONS})
 
-file(GLOB_RECURSE headers_FILES "*.h")
-file(GLOB_RECURSE sources_FILES "*.cpp")
-file(GLOB_RECURSE ui_FILES "*.ui")
+file(GLOB headers "*.h*")
+file(GLOB sources "*.cpp")
+file(GLOB_RECURSE headers_algos "algos/*.h")
+file(GLOB_RECURSE sources_algos "algos/*.cpp")
+file(GLOB ui_FILES "*.ui")
 
-set  (project_SOURCES ${sources_FILES})
-set  (project_HEADERS ${headers_FILES})
+list  (APPEND project_HEADERS ${headers} ${headers_algos})
+list  (APPEND project_SOURCES ${sources} ${sources_algos})
 set  (project_FORMS   ${ui_FILES})
 set  (VTK_LIBRARIES   vtkRendering vtkGraphics vtkHybrid QVTK)
 #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11") Cannot use C11 with PCL

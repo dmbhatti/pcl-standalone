@@ -1,3 +1,4 @@
 *.txt~
 Makefile
 *.pro.user
+build/

@@ -1,0 +1,1 @@
+Small standalone tool to play with pcl. Requires pcl, opencv, eigen3 and Qt4 (gui stuff).
