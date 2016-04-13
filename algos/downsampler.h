@@ -7,20 +7,20 @@
 
 class Downsampler : public CloudEmitterReceiver
 {
-    Q_OBJECT
+Q_OBJECT
 
 public:
-    Downsampler();
+  Downsampler();
 
 public slots:
-    void receiveCloudMessage(const CloudMessage::ConstPtr &message);
+  void receiveCloudMessage(const CloudMessage::ConstPtr &message);
 
 private:
-    void algorithm(const CloudMessage::ConstPtr &message);
-    void dummy();
-    int instanceID;
+  void algorithm(const CloudMessage::ConstPtr &message);
+  void dummy();
+  int instanceID;
 
-    QVector<QFuture<void> > threads;
+  QVector<QFuture<void> > threads;
 };
 
 #endif // DOWNSAMPLER_H

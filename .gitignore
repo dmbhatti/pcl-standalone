@@ -3,3 +3,4 @@ Makefile
 *.pro.user
 build/
 .idea/
+ui_pclviewer.h

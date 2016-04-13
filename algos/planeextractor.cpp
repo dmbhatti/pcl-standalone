@@ -1,15 +1,14 @@
 #include "planeextractor.h"
+#include <math.h>
 #include <QThread>
 #include <QtConcurrentRun>
 #include <QFuture>
-
 #include <pcl/common/time.h>
-#include <math.h>
 
 // For ADE Code
 #include <opencv2/opencv.hpp>
 #include "ADEVision/PCLFunctions.hpp"
-#include"ADEVision/ExtractedPlane.hpp"
+#include "ADEVision/ExtractedPlane.hpp"
 
 // For our own fast plane segmentation
 #include <algorithm>
@@ -66,9 +65,9 @@ void PlaneExtractor::algorithm(const CloudMessage::ConstPtr &message) {
     static const unsigned long long FRAMENUM = 0;
     static const cv::Mat TRANSFORM = (cv::Mat_<double>(4,4) <<
                                       1, 0,           0,          0,
-                                      0,  sin(ROTX),  cos(ROTX),  0,
-                                      0, -cos(ROTX),  sin(ROTX),  CAM_HEIGHT,
-                                      0, 0,           0,          1);
+      0,  sin(ROTX),  cos(ROTX),  0,
+      0, -cos(ROTX),  sin(ROTX),  CAM_HEIGHT,
+      0, 0,           0,          1);
 
     ExtractedPlane::Ptr currentPlane(new ExtractedPlane());
     currentPlane->setCloud(cloud_xyz);
@@ -86,8 +85,8 @@ void PlaneExtractor::algorithm(const CloudMessage::ConstPtr &message) {
 #else
     Eigen::Matrix3f rot;
     rot << 1, 0, 0,
-            0,  cos(ROTX),  sin(ROTX),
-            0, -sin(ROTX),  cos(ROTX);
+      0,  cos(ROTX),  sin(ROTX),
+      0, -sin(ROTX),  cos(ROTX);
 
     // plane normal in the base coordinate system
     Eigen::Vector3f base_up(0, -1, 0);

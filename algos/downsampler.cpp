@@ -1,9 +1,5 @@
 #include "downsampler.h"
-
-#include <QThread>
 #include <QtConcurrentRun>
-#include <QFuture>
-
 #include <pcl/common/time.h>
 #include <pcl/filters/voxel_grid.h>
 
