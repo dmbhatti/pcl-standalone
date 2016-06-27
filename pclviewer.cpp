@@ -299,7 +299,7 @@ void PCLViewer::on_exportButton_released()
           extractor.filter(*objectCloud);
           QString fileName = QFileDialog::getSaveFileName(this, tr("Save File"), "", tr("PCD file (*.pcd)"));
           pcl::PCDWriter w;
-          w.writeBinaryCompressed(fileName.toStdString(), *objectCloud);
+          w.writeASCII(fileName.toStdString(), *objectCloud);
         }
       }
     }
